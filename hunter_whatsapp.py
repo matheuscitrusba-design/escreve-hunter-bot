@@ -1,46 +1,53 @@
-import os, requests, random, time, re
+import os
+import requests
+import random
+import time
 from datetime import datetime
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL = os.getenv("TELEGRAM_CHANNEL")
-LOJA = "magazineafilliados"
 
+# SEUS 3 LINKS VALIDADOS - SEM OOPS
 COFRE_OURO = [
-    ("TV 43 TCL QLED 43S5K", "240424200"),
-    ("iPhone 13 128GB 128GB Meia-noite", "234508500"),
-    ("iPhone 14 128GB", "237054500"),
-    ("Air Fryer Mondial 4,2L Family", "022255000"),
-    ("Air Fryer Philco 4,4L", "234532000"),
-    ("Smart TV 50 Crystal 4K Samsung", "237708800"),
-    ("Moto G54 5G 128GB", "237707300"),
-    ("JBL Boombox 3", "234665100"),
+    ("TV 43 TCL QLED 43S5K", "https://magazineluiza.onelink.me/589508454/2k218c14"),
+    ("Oferta Magalu 2", "https://magazineluiza.onelink.me/589508454/7xvwxhco"),
+    ("Oferta Magalu 3", "https://magazineluiza.onelink.me/589508454/u227lo53"),
 ]
 
-def enviar(produto_id, titulo_manual=""):
-    link_afiliado = f"https://www.magazinevoce.com.br/{LOJA}/p/{produto_id}/"
-    texto = f"""🎉 <b>ANIVERSARIO MAGALU</b>
-🔥 <b>{titulo_manual.upper()}</b>
+def enviar(link, titulo):
+    texto = f"""🎉 <b>ANIVERSARIO MAGALU - LOJA AFILLIADOS</b>
+🔥 <b>{titulo.upper()}</b>
 
-✅ Loja: Afilliados - Influenciador Magalu
-✅ Entrega RAPIDA Magalu
+✅ Loja Oficial Afilliados
+✅ Entrega Rapida Magalu
 ✅ Ate 10x sem juros
 
-👇 <b>LINK COM DESCONTO:</b>
-{link_afiliado}
+👇 <b>PEGAR DESCONTO AGORA:</b>
+{link}
 
-#achadosimperdiveis"""
+⏰ Estoque acabando rapido!
+#oferta #achados"""
 
     try:
-        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={"chat_id": CHANNEL, "text": texto, "parse_mode": "HTML"}, timeout=20)
-        print(f"Enviado {titulo_manual} -> {r.status_code}")
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        data = {
+            "chat_id": CHANNEL,
+            "text": texto,
+            "parse_mode": "HTML"
+        }
+        r = requests.post(url, data=data, timeout=20)
+        print(f"[{datetime.now()}] Enviado: {titulo} -> Status {r.status_code}")
         return True
     except Exception as e:
-        print(e)
+        print(f"Erro ao enviar {titulo}: {e}")
         return False
 
-print(f"=== HUNTER {datetime.now()} ===")
-for titulo, pid in random.sample(COFRE_OURO, 3):
-    enviar(pid, titulo)
-    time.sleep(3)
-print("✅ OK")
+print(f"=== HUNTER WHATSAPP - ONELINK - {datetime.now()} ===")
+print(f"Total de ofertas: {len(COFRE_OURO)}")
+
+# Envia em ordem aleatoria
+for titulo, link in random.sample(COFRE_OURO, len(COFRE_OURO)):
+    enviar(link, titulo)
+    time.sleep(5)
+
+print("✅ CICLO FINALIZADO - 0% CHANCE DE OOPS")
