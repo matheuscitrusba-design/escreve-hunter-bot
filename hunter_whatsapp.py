@@ -6,7 +6,6 @@ CHANNEL = os.getenv("TELEGRAM_CHANNEL")
 LOJA = "magazineafilliados"
 
 # COFRE DE OURO - 50 produtos que sempre vendem e dão comissão alta (4% a 12%)
-# O bot sorteia 3 por dia, mas todo dia aprende novos se conseguir furar o bloqueio
 COFRE_OURO = [
     ("TV 43 TCL QLED 43S5K Google TV", "tv-43-tcl-full-hd-qled-43s5k-google-tv-2-hdmi/p/240424200/et/tves/"),
     ("iPhone 13 128GB Meia-noite", "apple-iphone-13-128gb-meia-noite-tela-6-1-12mp/p/234508500/te/iph1/"),
@@ -37,38 +36,41 @@ def proxy_get(url):
 def buscar_mais_vendidos():
     """Tenta descobrir os mais vendidos de hoje na Magalu"""
     print("Tentando descobrir os mais vendidos de hoje...")
-    # Página de mais vendidos da Magalu
     html = proxy_get("https://www.magazineluiza.com.br/mais-vendidos/")
     if not html:
         return []
-
-    # Pega links /p/... que são produtos
     links = re.findall(r'/p/[^"]+?/p/[a-z0-9]+/[^"/]+/', html)
-    links = list(dict.fromkeys(links))[:10] # remove duplicado
+    links = list(dict.fromkeys(links))[:10]
     print(f"Achou {len(links)} produtos novos!")
     return links
 
 def enviar(link_path, titulo_manual=""):
+    # ARRUMADO: Garante que o link sempre usa sua loja que já funciona na foto
     if not link_path.startswith("http"):
-        link_afiliado = f"https://www.magazinevoce.com.br/{LOJA}/{link_path.lstrip('/')}"
-        if not link_afiliado.endswith("/"):
+        link_path = link_path.lstrip('/')
+        link_afiliado = f"https://www.magazinevoce.com.br/{LOJA}/{link_path}"
+        if "/p/" in link_afiliado and not link_afiliado.endswith("/"):
             link_afiliado += "/"
     else:
         link_afiliado = link_path
 
     titulo = titulo_manual or link_path.split("/")[0].replace("-", " ").title()
 
-    texto = f"""🔥 <b>{titulo.upper()[:90]}</b>
+    # PROMPT NOVO - Mais vendedor e com o banner de ANIVERSÁRIO que apareceu na sua loja
+    texto = f"""🎉 <b>ANIVERSÁRIO MAGALU - OFERTA IMPERDÍVEL</b>
 
-💥 <b>MAIS VENDIDO HOJE</b>
-✅ Entrega Rápida Magalu
+🔥 <b>{titulo.upper()[:85]}</b>
+
+✅ Loja Oficial: Afilliados - Influenciador Magalu
+✅ Entrega RÁPIDA Magalu
 ✅ Até 10x sem juros ou 10% OFF no Pix
+✅ Produto com estoque garantido
 
-👉 <b>PEGAR DESCONTO AGORA:</b>
+👇 <b>COMPRAR COM MEU DESCONTO:</b>
 {link_afiliado}
 
-⏰ Oferta pode acabar a qualquer momento!
-#oferta #achadosimperdiveis"""
+⏰ Essa oferta da foto some hoje! Corre!
+#achadosimperdiveis #aniversariomagalu"""
 
     try:
         r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
@@ -81,9 +83,7 @@ def enviar(link_path, titulo_manual=""):
 
 print(f"=== HUNTER ETERNO {datetime.now()} ===")
 
-# 1. Tenta buscar produtos novos e frescos
 novos = buscar_mais_vendidos()
-
 produtos_do_dia = []
 if novos and len(novos) >= 3:
     print("Usando produtos FRESCOS de hoje")
@@ -91,11 +91,10 @@ if novos and len(novos) >= 3:
 else:
     print("Proxy bloqueado, usando COFRE DE OURO")
     produtos_do_dia = random.sample(COFRE_OURO, 3)
-    # transforma cofre para formato (titulo, path)
     produtos_do_dia = [(t, p) for t, p in produtos_do_dia]
 
 for titulo, path in produtos_do_dia:
     enviar(path, titulo)
-    time.sleep(12) # evita spam
+    time.sleep(12)
 
-print("✅ CICLO DO DIA FINALIZADO - AMANHÃ TEM MAIS")
+print("✅ CICLO DO DIA FINALIZADO")
