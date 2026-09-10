@@ -1,8 +1,7 @@
-import os
+codigo = r'''import os
 import re
 import time
 import random
-import hashlib
 import requests
 
 from datetime import datetime
@@ -47,11 +46,6 @@ CATEGORIAS = [
 
 ARQUIVO_HISTORICO = "produtos_publicados.txt"
 
-
-# ============================================================
-# HEADERS
-# ============================================================
-
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -76,7 +70,7 @@ def log(mensagem):
 
 
 # ============================================================
-# VALIDAÇÃO
+# CONFIGURAÇÃO
 # ============================================================
 
 def validar_configuracao():
@@ -138,15 +132,93 @@ def salvar_no_historico(produto_id):
 
 
 # ============================================================
-# ID INTERNO
+# BUSCA DIRETA
 # ============================================================
 
-def gerar_id_interno(titulo, url):
-    base = f"{titulo}|{url}".lower().strip()
+def buscar_direto(url):
+    try:
+        resposta = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=20
+        )
 
-    return hashlib.sha256(
-        base.encode("utf-8")
-    ).hexdigest()[:16]
+        log(
+            f"Direto: HTTP {resposta.status_code} | "
+            f"{len(resposta.text)} caracteres"
+        )
+
+        if resposta.status_code == 200 and len(resposta.text) > 2000:
+            return resposta.text
+
+    except Exception as erro:
+        log(f"Falha busca direta: {erro}")
+
+    return ""
+
+
+# ============================================================
+# BUSCA POR JINA
+# ============================================================
+
+def buscar_jina(url):
+    try:
+        url_jina = "https://r.jina.ai/http://" + url.replace(
+            "https://", ""
+        )
+
+        resposta = requests.get(
+            url_jina,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "text/plain"
+            },
+            timeout=30
+        )
+
+        log(
+            f"Jina: HTTP {resposta.status_code} | "
+            f"{len(resposta.text)} caracteres"
+        )
+
+        if resposta.status_code == 200 and len(resposta.text) > 1000:
+            return resposta.text
+
+    except Exception as erro:
+        log(f"Falha Jina: {erro}")
+
+    return ""
+
+
+# ============================================================
+# BUSCA POR ALLORIGINS
+# ============================================================
+
+def buscar_allorigins(url):
+    try:
+        url_proxy = (
+            "https://api.allorigins.win/raw?url="
+            + quote(url, safe="")
+        )
+
+        resposta = requests.get(
+            url_proxy,
+            headers=HEADERS,
+            timeout=30
+        )
+
+        log(
+            f"AllOrigins: HTTP {resposta.status_code} | "
+            f"{len(resposta.text)} caracteres"
+        )
+
+        if resposta.status_code == 200 and len(resposta.text) > 1000:
+            return resposta.text
+
+    except Exception as erro:
+        log(f"Falha AllOrigins: {erro}")
+
+    return ""
 
 
 # ============================================================
@@ -154,62 +226,43 @@ def gerar_id_interno(titulo, url):
 # ============================================================
 
 def buscar_produtos(termo):
-    """
-    Busca produtos reais na página do Magalu.
-
-    Se a página não puder ser lida ou os dados não forem
-    encontrados com segurança, retorna uma lista vazia.
-
-    O sistema nunca inventa produto ou ID.
-    """
-
     log(f"Buscando: {termo}")
 
-    termo_url = quote(termo.replace(" ", "-"))
+    termo_url = quote(
+        termo.replace(" ", "-")
+    )
 
     url = (
         "https://www.magazineluiza.com.br/"
         f"busca/{termo_url}/"
     )
 
-    try:
-        resposta = requests.get(
-            url,
-            headers=HEADERS,
-            timeout=25
-        )
+    # 1. Tenta acesso direto
+    html = buscar_direto(url)
 
+    # 2. Se o Magalu responder 403, tenta Jina
+    if not html:
+        log("Acesso direto falhou. Tentando Jina...")
+        html = buscar_jina(url)
+
+    # 3. Última tentativa por AllOrigins
+    if not html:
+        log("Jina falhou. Tentando AllOrigins...")
+        html = buscar_allorigins(url)
+
+    if not html:
         log(
-            f"Resposta Magalu: "
-            f"{resposta.status_code} | "
-            f"{len(resposta.text)} caracteres"
+            "Não foi possível obter a página do produto."
         )
-
-        if resposta.status_code != 200:
-            log("Página não retornou HTTP 200.")
-            return []
-
-        html = resposta.text
-
-        if len(html) < 1000:
-            log("HTML muito pequeno. Busca não confiável.")
-            return []
-
-        produtos = extrair_produtos(html)
-
-        log(
-            f"Produtos encontrados: {len(produtos)}"
-        )
-
-        return produtos
-
-    except requests.RequestException as erro:
-        log(f"Erro de conexão: {erro}")
         return []
 
-    except Exception as erro:
-        log(f"Erro inesperado na busca: {erro}")
-        return []
+    produtos = extrair_produtos(html)
+
+    log(
+        f"Produtos encontrados: {len(produtos)}"
+    )
+
+    return produtos
 
 
 # ============================================================
@@ -219,62 +272,57 @@ def buscar_produtos(termo):
 def extrair_produtos(html):
     encontrados = []
 
-    # --------------------------------------------------------
-    # URLs completas de produtos
-    # --------------------------------------------------------
-
-    padrao_urls = re.findall(
+    # IDs em URLs completas
+    ids = re.findall(
         r'https?://www\.magazineluiza\.com\.br/[^"\']+/p/([A-Za-z0-9_-]+)',
         html
     )
 
-    ids = list(dict.fromkeys(padrao_urls))
-
-    # --------------------------------------------------------
-    # Caso não encontre URLs completas
-    # --------------------------------------------------------
-
+    # IDs em caminhos /p/
     if not ids:
         ids = re.findall(
             r'/p/([A-Za-z0-9_-]{5,})',
             html
         )
 
-        ids = list(dict.fromkeys(ids))
+    ids = list(dict.fromkeys(ids))
 
-    # --------------------------------------------------------
     # Títulos
-    # --------------------------------------------------------
-
     titulos = []
 
     padroes_titulo = [
         r'"title":"([^"]{5,200})"',
         r'"name":"([^"]{5,200})"',
-        r'"productName":"([^"]{5,200})"'
+        r'"productName":"([^"]{5,200})"',
+        r'<title>(.*?)</title>'
     ]
 
     for padrao in padroes_titulo:
         encontrados_titulos = re.findall(
             padrao,
-            html
+            html,
+            flags=re.IGNORECASE | re.DOTALL
         )
 
-        if encontrados_titulos:
-            titulos.extend(encontrados_titulos)
+        titulos.extend(encontrados_titulos)
 
-    titulos = list(dict.fromkeys(titulos))
+    titulos = [
+        limpar_texto(t)
+        for t in titulos
+    ]
 
-    # --------------------------------------------------------
-    # Montagem dos produtos
-    # --------------------------------------------------------
+    titulos = [
+        t for t in dict.fromkeys(titulos)
+        if len(t) >= 5
+    ]
 
-    for indice, produto_id in enumerate(ids[:10]):
+    # Montagem
+    for indice, produto_id in enumerate(ids[:15]):
 
         if indice >= len(titulos):
             continue
 
-        titulo = limpar_texto(titulos[indice])
+        titulo = titulos[indice]
 
         if len(titulo) < 5:
             continue
@@ -301,12 +349,7 @@ def limpar_texto(texto):
     texto = texto.replace("\\/", "/")
     texto = texto.replace("\\u002F", "/")
     texto = texto.replace("\\\"", '"')
-
-    texto = re.sub(
-        r"\s+",
-        " ",
-        texto
-    )
+    texto = re.sub(r"\s+", " ", texto)
 
     return texto.strip()
 
@@ -335,21 +378,20 @@ def gerar_link_afiliado(produto):
 
 
 # ============================================================
-# TEXTO DA OFERTA
+# TEXTO
 # ============================================================
 
 def montar_texto(produto, link):
     titulo = produto["title"]
 
     return (
-        "🔥 <b>OFERTA ENCONTRADA!</b>\n\n"
+        "🔥 <b>ACHADO DO DIA</b>\n\n"
         f"🛍️ <b>{titulo.upper()}</b>\n\n"
         "✅ Produto encontrado no Magalu\n"
-        "✅ Link de compra\n"
-        "⚡ Consulte preço e disponibilidade\n\n"
-        "👇 <b>VER OFERTA:</b>\n"
+        "⚡ Confira preço e disponibilidade\n\n"
+        "👇 <b>VER PRODUTO:</b>\n"
         f"{link}\n\n"
-        "⏰ O preço pode mudar a qualquer momento.\n\n"
+        "⏰ Preço e estoque podem mudar sem aviso.\n\n"
         "#oferta #achados #promocao #magalu"
     )
 
@@ -386,15 +428,14 @@ def enviar_telegram(texto):
             return True
 
         log(
-            f"Resposta Telegram: "
+            f"Telegram respondeu: "
             f"{resposta.text[:500]}"
         )
 
-        return False
-
     except requests.RequestException as erro:
         log(f"Erro Telegram: {erro}")
-        return False
+
+    return False
 
 
 # ============================================================
@@ -409,13 +450,7 @@ def produto_valido(produto, historico):
     titulo = produto.get("title")
     url = produto.get("url")
 
-    if not produto_id:
-        return False
-
-    if not titulo:
-        return False
-
-    if not url:
+    if not produto_id or not titulo or not url:
         return False
 
     if len(titulo.strip()) < 5:
@@ -431,13 +466,13 @@ def produto_valido(produto, historico):
 
 
 # ============================================================
-# EXECUÇÃO PRINCIPAL
+# PRINCIPAL
 # ============================================================
 
 def main():
 
     log("=" * 60)
-    log("HUNTER DE OFERTAS V2")
+    log("HUNTER DE OFERTAS V3")
     log("Sistema iniciado")
     log("=" * 60)
 
@@ -458,10 +493,6 @@ def main():
     )
 
     enviados = 0
-
-    # --------------------------------------------------------
-    # BUSCA E PUBLICAÇÃO
-    # --------------------------------------------------------
 
     for termo in termos:
 
@@ -497,13 +528,11 @@ def main():
             )
 
             log(
-                f"Preparando publicação: "
+                f"Publicando: "
                 f"{produto['title'][:70]}"
             )
 
-            enviado = enviar_telegram(texto)
-
-            if enviado:
+            if enviar_telegram(texto):
 
                 salvar_no_historico(
                     produto["id"]
@@ -536,17 +565,7 @@ def main():
 
                 break
 
-            else:
-                log(
-                    "Falha ao publicar. "
-                    "Tentando próximo produto."
-                )
-
-                time.sleep(5)
-
-    # --------------------------------------------------------
-    # FINAL
-    # --------------------------------------------------------
+            time.sleep(5)
 
     log("=" * 60)
 
@@ -558,16 +577,19 @@ def main():
         )
     else:
         log(
-            f"FINALIZADO: "
-            f"{enviados} oferta(s) publicada(s)."
+            f"FINALIZADO: {enviados} "
+            f"oferta(s) publicada(s)."
         )
 
     log("=" * 60)
 
 
-# ============================================================
-# START
-# ============================================================
-
 if __name__ == "__main__":
     main()
+'''
+
+caminho = "/mnt/data/hunter_whatsapp_v3.py"
+with open(caminho, "w", encoding="utf-8") as f:
+    f.write(codigo)
+
+print(f"Arquivo pronto: {caminho}")
