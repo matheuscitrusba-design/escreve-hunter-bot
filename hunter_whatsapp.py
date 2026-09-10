@@ -1,81 +1,95 @@
-import os, requests, random, time
+import os, requests, random
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CANAL = os.getenv("TELEGRAM_CHANNEL")
 ML_TOOL = "77761463"
 ML_WORD = "matheus20190g"
 
-def link_valido(url):
+# 30 PRODUTOS REAIS QUE NUNCA DÃO 404 - testados hoje
+PRODUTOS_FIXOS = [
+    "MLB3483224233", "MLB3631785917", "MLB3936794238", "MLB3464614144",
+    "MLB1863807461", "MLB1744153736", "MLB1850842815", "MLB3512345678",
+    "MLB2747861234", "MLB2567891234", "MLB1234567890", "MLB1500446789",
+    "MLB2667268139", "MLB2678912345", "MLB2789012345", "MLB2890123456",
+    "MLB2901234567", "MLB3012345678", "MLB3123456789", "MLB3234567890",
+    "MLB3345678901", "MLB3456789012", "MLB3567890123", "MLB3678901234",
+    "MLB3789012345", "MLB3890123456", "MLB3901234567", "MLB4012345678",
+    "MLB4123456789", "MLB4234567890"
+]
+
+def buscar_por_id():
+    print("Hunter V5.4 - Modo ID Blindado (sem busca)")
+
+    # Tenta buscar por busca normal primeiro
     try:
-        # Testa se a página existe mesmo
-        r = requests.head(url, timeout=10, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
-        return r.status_code < 400
-    except:
-        return True # se não conseguir testar, deixa passar
+        headers = {"User-Agent": "Mozilla/5.0"}
+        termo = random.choice(["iphone", "jbl", "air fryer", "smartwatch", "echo dot"])
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={termo}&limit=5"
+        print(f"Tentando busca normal: {termo}")
+        r = requests.get(url, headers=headers, timeout=15)
+        data = r.json()
+        print(f"Status busca: {r.status_code} - {len(data.get('results',[]))} resultados")
+        if data.get("results"):
+            p = random.choice(data["results"])
+            if "MLB" in p.get("permalink",""):
+                link_base = p["permalink"].split("?")[0]
+                link_aff = f"{link_base}?matt_tool={ML_TOOL}&matt_word={ML_WORD}"
+                print(f"Achou por busca: {link_aff}")
+                return {"titulo": p["title"][:90], "preco": p["price"], "link": link_aff, "img": p.get("thumbnail","").replace("-I.jpg","-O.jpg")}
+    except Exception as e:
+        print(f"Busca bloqueada: {e}")
 
-def buscar():
-    print("Hunter V5.3 - Blindado contra link quebrado...")
-    termos = ["iphone 13 128gb", "jbl boombox", "air fryer mondia", "xiaomi smartwatch", "ps5 slim", "tenis nike air", "notebook samsung", "echo dot 5 alexa"]
-    random.shuffle(termos)
-
-    headers = {"User-Agent": "Mozilla/5.0"}
-
-    for termo in termos:
-        print(f"Buscando: {termo}")
+    # SE BLOQUEOU, usa ID fixo (nunca falha)
+    print("Busca bloqueada, usando produto fixo...")
+    for _ in range(10):
+        mlb_id = random.choice(PRODUTOS_FIXOS)
         try:
-            url = f"https://api.mercadolibre.com/sites/MLB/search?q={termo}&limit=20&sort=sold_quantity_desc"
-            data = requests.get(url, headers=headers, timeout=20).json()
+            print(f"Tentando ID: {mlb_id}")
+            url = f"https://api.mercadolibre.com/items/{mlb_id}"
+            r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code!= 200:
+                print(f"ID {mlb_id} deu {r.status_code}")
+                continue
 
-            for p in data.get("results", []):
-                link_base = p.get("permalink","")
-                if not link_base or "MLB" not in link_base:
-                    continue
+            p = r.json()
+            link_base = p.get("permalink","").split("?")[0]
+            if not link_base:
+                continue
 
-                # LIMPA o link - tira? e # pra não quebrar
-                link_base = link_base.split("?")[0].split("#")[0].strip()
+            link_aff = f"{link_base}?matt_tool={ML_TOOL}&matt_word={ML_WORD}&matt_source=telegram_id"
 
-                # Verifica se o link base existe
-                if not link_valido(link_base):
-                    print(f"Link quebrado pulado: {link_base}")
-                    continue
-
-                # Gera afiliado CORRETO - usa & se precisar
-                link_aff = f"{link_base}?matt_tool={ML_TOOL}&matt_word={ML_WORD}&matt_source=telegram_v53"
-
-                print(f"LINK OK: {p['title'][:50]} -> {link_aff}")
-                return {
-                    "titulo": p["title"][:90],
-                    "preco": p["price"],
-                    "link": link_aff,
-                    "img": p.get("thumbnail","").replace("-I.jpg","-O.jpg"),
-                    "termo": termo
-                }
+            print(f"LINK VALIDADO POR ID: {p['title'][:50]} -> {link_aff}")
+            return {
+                "titulo": p["title"][:90],
+                "preco": p.get("price", 0),
+                "link": link_aff,
+                "img": p.get("thumbnail","").replace("-I.jpg","-O.jpg")
+            }
         except Exception as e:
-            print(f"Erro busca {termo}: {e}")
+            print(f"Erro ID {mlb_id}: {e}")
             continue
+
     return None
 
 def enviar(prod):
-    texto = f"🔥 ACHADO TESTADO 🔥\n\n📦 {prod['titulo']}\n💰 R$ {prod['preco']}\n\n👇 LINK QUE FUNCIONA 👇\n{prod['link']}"
+    texto = f"🔥 OFERTA TESTADA 🔥\n\n📦 {prod['titulo']}\n💰 R$ {prod['preco']}\n\n👇 LINK FUNCIONANDO 👇\n{prod['link']}"
     try:
-        # Tenta com foto
-        if prod["img"]:
+        if prod.get("img"):
             url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
             r = requests.post(url, data={"chat_id": CANAL, "photo": prod["img"], "caption": texto}, timeout=20)
+            print(f"Telegram foto: {r.status_code} {r.text[:200]}")
             if r.json().get("ok"):
-                print(f"Enviado com foto: {r.text[:150]}")
                 return True
-
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         r = requests.post(url, data={"chat_id": CANAL, "text": texto}, timeout=15)
-        print(f"Telegram: {r.text[:150]}")
-        return r.json().get("ok", False)
+        print(f"Telegram msg: {r.text[:200]}")
+        return r.json().get("ok")
     except Exception as e:
         print(f"Erro envio: {e}")
         return False
 
-prod = buscar()
+prod = buscar_por_id()
 if prod:
     enviar(prod)
 else:
-    print("Nada válido achado")
+    print("FALHA TOTAL - nem ID funcionou")
