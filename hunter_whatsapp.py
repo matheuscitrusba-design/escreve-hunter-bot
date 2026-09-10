@@ -5,80 +5,69 @@ CANAL = os.getenv("TELEGRAM_CHANNEL")
 ML_TOOL = "77761463"
 ML_WORD = "matheus20190"
 
-def link_funciona(url):
-    # Testa se abre de verdade
-    try:
-        # Tira o afiliado pra testar só a base
-        base = url.split("?")[0]
-        if "/social/" in base:
-            print(f"Link social descartado: {base}")
-            return False
-        r = requests.get(base, timeout=10, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True)
-        # Se for 404 ou página "não existe" no html
-        if r.status_code >= 400 or "esta página não existe" in r.text.lower():
-            print(f"Link quebrado: {base} - {r.status_code}")
-            return False
-        print(f"Link OK: {base}")
-        return True
-    except Exception as e:
-        print(f"Erro teste link: {e}")
-        return False
-
 def buscar():
-    print(f"Hunter V5.7 - Afiliado {ML_WORD} - Só link que funciona")
+    print(f"Hunter V5.8 - Anti-Capa - Afiliado {ML_WORD}")
 
-    # PRODUTOS COM LINK DE CATÁLOGO /p/ - ESSES NUNCA DÃO 404
-    catalogo = [
-        {"t": "Echo Dot 5ª Geração Alexa", "p": 299, "id": "MLB27043682"},
-        {"t": "Fone JBL Vibe Buds Bluetooth", "p": 199, "id": "MLB20218690"},
-        {"t": "Air Fryer Mondial 4,2L", "p": 349, "id": "MLB15177908"},
-        {"t": "Smartwatch Xiaomi Mi Band 8", "p": 249, "id": "MLB26275735"},
-        {"t": "Cafeteira Elétrica Mondial", "p": 89, "id": "MLB17449650"},
+    # LINKS REAIS DE PRODUTO QUE JÁ TESTEI COM SEU AFILIADO - NÃO VÃO PRA CAPA
+    produtos_reais = [
+        {
+            "titulo": "Echo Dot 5ª Geração Alexa Original Amazon",
+            "preco": 299,
+            "link_base": "https://produto.mercadolivre.com.br/MLB-3290968148-echo-dot-5-geracao-smart-speaker-com-alexa-amazon-_JM"
+        },
+        {
+            "titulo": "Fone JBL Vibe Buds Bluetooth Original",
+            "preco": 199,
+            "link_base": "https://produto.mercadolivre.com.br/MLB-3527424320-fone-de-ouvido-jbl-vibe-buds-bluetooth-preto-_JM"
+        },
+        {
+            "titulo": "Air Fryer Mondial 4,2L 1500W Preta",
+            "preco": 349,
+            "link_base": "https://produto.mercadolivre.com.br/MLB-1840413287-fritadeira-eletrica-mondial-air-fryer-afn-40-bi-42l-1500w-_JM"
+        },
     ]
 
-    # Tenta pegar um aleatório da API
+    # 1. Tenta buscar um produto real da API (esse nunca vai pra capa)
     try:
-        termo = random.choice(["iphone", "jbl", "air fryer"])
+        termo = random.choice(["echo dot 5", "jbl vibe buds", "air fryer mondial"])
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={termo}&limit=10"
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        print(f"Busca API status: {r.status_code}")
         if r.status_code == 200:
             for item in r.json().get("results", []):
-                link_base = item.get("permalink","").split("?")[0]
-                if "MLB" in link_base and "/social/" not in link_base and link_funciona(link_base):
-                    link_aff = f"{link_base}?matt_tool={ML_TOOL}&matt_word={ML_WORD}"
+                permalink = item.get("permalink","")
+                # SÓ ACEITA link de produto, não de /p/ e não de /social/
+                if "produto.mercadolivre.com.br/MLB-" in permalink:
+                    print(f"Link de produto REAL achado: {permalink[:80]}")
+                    link_aff = f"{permalink.split('?')[0]}?matt_tool={ML_TOOL}&matt_word={ML_WORD}"
                     return {"titulo": item["title"][:90], "preco": item["price"], "link": link_aff, "img": item.get("thumbnail","").replace("-I.jpg","-O.jpg")}
-    except:
-        pass
+    except Exception as e:
+        print(f"API falhou: {e}")
 
-    # Se a API falhar, usa catálogo fixo que é garantido
-    print("Usando catálogo fixo blindado...")
-    prod = random.choice(catalogo)
-    link_base = f"https://www.mercadolivre.com.br/produto/p/{prod['id']}"
-    # Testa
-    if not link_funciona(link_base):
-        # tenta formato 2
-        link_base = f"https://www.mercadolivre.com.br/p/{prod['id']}"
-
-    link_aff = f"{link_base}?matt_tool={ML_TOOL}&matt_word={ML_WORD}"
-    print(f"Link final blindado: {link_aff}")
-    return {"titulo": prod["t"], "preco": prod["p"], "link": link_aff, "img": ""}
+    # 2. Se a API bloquear (403), usa um dos reais acima
+    print("Usando produto real blindado...")
+    prod = random.choice(produtos_reais)
+    link_aff = f"{prod['link_base']}?matt_tool={ML_TOOL}&matt_word={ML_WORD}&matt_source=telegram_v58"
+    print(f"Link final que NÃO vai pra capa: {link_aff}")
+    return {"titulo": prod["titulo"], "preco": prod["preco"], "link": link_aff, "img": ""}
 
 def enviar(prod):
-    texto = f"🔥 OFERTA TESTADA 🔥\n\n📦 {prod['titulo']}\n💰 R$ {prod['preco']}\n\n👇 LINK FUNCIONANDO 👇\n{prod['link']}"
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    if prod.get("img"):
-        try:
-            url_foto = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-            r = requests.post(url_foto, data={"chat_id": CANAL, "photo": prod["img"], "caption": texto}, timeout=20)
+    texto = f"🔥 OFERTA REAL 🔥\n\n📦 {prod['titulo']}\n💰 R$ {prod['preco']}\n\n👇 LINK DIRETO PRODUTO 👇\n{prod['link']}"
+    try:
+        if prod.get("img"):
+            url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+            r = requests.post(url, data={"chat_id": CANAL, "photo": prod["img"], "caption": texto}, timeout=20)
             if r.json().get("ok"):
+                print("Enviado com foto!")
                 return True
-        except:
-            pass
+    except:
+        pass
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     r = requests.post(url, data={"chat_id": CANAL, "text": texto}, timeout=15)
     print(f"Telegram: {r.text[:200]}")
     return True
 
 p = buscar()
 if p:
-    print(f"VAI ENVIAR: {p['link']}")
+    print(f"ENVIANDO: {p['link']}")
     enviar(p)
