@@ -1,14 +1,12 @@
-```python
-import os
+codigo = r'''import os
 import re
-import json
 import time
 import random
 import hashlib
 import requests
 
 from datetime import datetime
-from urllib.parse import quote, urljoin
+from urllib.parse import quote
 
 
 # ============================================================
@@ -18,21 +16,17 @@ from urllib.parse import quote, urljoin
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL = os.getenv("TELEGRAM_CHANNEL")
 
-# Seus links-base de afiliado
 LINKS_BASE_VALIDOS = [
     "https://magazineluiza.onelink.me/589508454/2k218c14",
     "https://magazineluiza.onelink.me/589508454/7xvwxhco",
     "https://magazineluiza.onelink.me/589508454/u227lo53"
 ]
 
-# Quantidade máxima de ofertas publicadas por execução
 MAX_OFERTAS_POR_EXECUCAO = 3
 
-# Tempo entre publicações
 ESPERA_MIN = 8
 ESPERA_MAX = 15
 
-# Categorias pesquisadas
 CATEGORIAS = [
     "smart tv 43 qled",
     "air fryer",
@@ -51,7 +45,6 @@ CATEGORIAS = [
     "smartwatch"
 ]
 
-# Evita publicar novamente o mesmo produto
 ARQUIVO_HISTORICO = "produtos_publicados.txt"
 
 
@@ -83,7 +76,7 @@ def log(mensagem):
 
 
 # ============================================================
-# VALIDAÇÕES
+# VALIDAÇÃO
 # ============================================================
 
 def validar_configuracao():
@@ -101,7 +94,6 @@ def validar_configuracao():
     if erros:
         for erro in erros:
             log(f"ERRO: {erro}")
-
         return False
 
     return True
@@ -146,15 +138,10 @@ def salvar_no_historico(produto_id):
 
 
 # ============================================================
-# ID ÚNICO
+# ID INTERNO
 # ============================================================
 
 def gerar_id_interno(titulo, url):
-    """
-    Cria um identificador determinístico.
-    O mesmo produto não terá IDs aleatórios diferentes.
-    """
-
     base = f"{titulo}|{url}".lower().strip()
 
     return hashlib.sha256(
@@ -168,11 +155,12 @@ def gerar_id_interno(titulo, url):
 
 def buscar_produtos(termo):
     """
-    Tenta obter produtos reais da página de busca.
+    Busca produtos reais na página do Magalu.
 
-    IMPORTANTE:
-    Se não encontrar dados suficientes, retorna [].
-    Nunca inventa produto ou ID.
+    Se a página não puder ser lida ou os dados não forem
+    encontrados com segurança, retorna uma lista vazia.
+
+    O sistema nunca inventa produto ou ID.
     """
 
     log(f"Buscando: {termo}")
@@ -210,8 +198,7 @@ def buscar_produtos(termo):
         produtos = extrair_produtos(html)
 
         log(
-            f"Produtos reais encontrados: "
-            f"{len(produtos)}"
+            f"Produtos encontrados: {len(produtos)}"
         )
 
         return produtos
@@ -230,17 +217,10 @@ def buscar_produtos(termo):
 # ============================================================
 
 def extrair_produtos(html):
-    """
-    Tenta encontrar produtos através de diferentes padrões.
-
-    Como páginas de e-commerce podem mudar de estrutura,
-    utilizamos mais de uma estratégia.
-    """
-
     encontrados = []
 
     # --------------------------------------------------------
-    # Estratégia 1 — URLs de produto
+    # URLs completas de produtos
     # --------------------------------------------------------
 
     padrao_urls = re.findall(
@@ -248,11 +228,10 @@ def extrair_produtos(html):
         html
     )
 
-    # Remove duplicados mantendo ordem
     ids = list(dict.fromkeys(padrao_urls))
 
     # --------------------------------------------------------
-    # Estratégia 2 — caminhos /p/ID/
+    # Caso não encontre URLs completas
     # --------------------------------------------------------
 
     if not ids:
@@ -287,23 +266,21 @@ def extrair_produtos(html):
     titulos = list(dict.fromkeys(titulos))
 
     # --------------------------------------------------------
-    # Montagem
+    # Montagem dos produtos
     # --------------------------------------------------------
 
     for indice, produto_id in enumerate(ids[:10]):
 
-        if indice < len(titulos):
-            titulo = titulos[indice]
-        else:
+        if indice >= len(titulos):
             continue
 
-        titulo = limpar_texto(titulo)
+        titulo = limpar_texto(titulos[indice])
 
         if len(titulo) < 5:
             continue
 
         url_produto = (
-            f"https://www.magazineluiza.com.br/p/"
+            "https://www.magazineluiza.com.br/p/"
             f"{produto_id}/"
         )
 
@@ -317,7 +294,7 @@ def extrair_produtos(html):
 
 
 # ============================================================
-# LIMPEZA DE TEXTO
+# LIMPEZA
 # ============================================================
 
 def limpar_texto(texto):
@@ -339,12 +316,6 @@ def limpar_texto(texto):
 # ============================================================
 
 def gerar_link_afiliado(produto):
-    """
-    Usa um dos links-base reais.
-
-    O produto precisa ter sido encontrado de verdade.
-    """
-
     base = random.choice(
         LINKS_BASE_VALIDOS
     ).split("?")[0]
@@ -408,8 +379,7 @@ def enviar_telegram(texto):
         )
 
         log(
-            f"Telegram: "
-            f"HTTP {resposta.status_code}"
+            f"Telegram: HTTP {resposta.status_code}"
         )
 
         if resposta.status_code == 200:
@@ -428,7 +398,7 @@ def enviar_telegram(texto):
 
 
 # ============================================================
-# FILTRO DE PRODUTOS
+# FILTRO
 # ============================================================
 
 def produto_valido(produto, historico):
@@ -439,7 +409,6 @@ def produto_valido(produto, historico):
     titulo = produto.get("title")
     url = produto.get("url")
 
-    # Precisa possuir dados reais
     if not produto_id:
         return False
 
@@ -449,17 +418,13 @@ def produto_valido(produto, historico):
     if not url:
         return False
 
-    # Título muito pequeno
     if len(titulo.strip()) < 5:
         return False
 
-    # Não publicar novamente
     if produto_id in historico:
         log(
-            f"Produto já publicado: "
-            f"{produto_id}"
+            f"Produto já publicado: {produto_id}"
         )
-
         return False
 
     return True
@@ -482,8 +447,6 @@ def main():
 
     historico = carregar_historico()
 
-    # Sorteia categorias para não fazer sempre
-    # exatamente a mesma sequência.
     termos = random.sample(
         CATEGORIAS,
         min(6, len(CATEGORIAS))
@@ -497,7 +460,7 @@ def main():
     enviados = 0
 
     # --------------------------------------------------------
-    # BUSCA
+    # BUSCA E PUBLICAÇÃO
     # --------------------------------------------------------
 
     for termo in termos:
@@ -509,13 +472,10 @@ def main():
 
         if not produtos:
             log(
-                f"Nenhum produto confirmado "
-                f"para: {termo}"
+                f"Nenhum produto confirmado para: {termo}"
             )
             continue
 
-        # Embaralha levemente os resultados
-        # para evitar sempre o primeiro.
         random.shuffle(produtos)
 
         for produto in produtos:
@@ -529,11 +489,7 @@ def main():
             ):
                 continue
 
-            # Gera link somente depois de
-            # confirmar produto real.
-            link = gerar_link_afiliado(
-                produto
-            )
+            link = gerar_link_afiliado(produto)
 
             texto = montar_texto(
                 produto,
@@ -545,9 +501,7 @@ def main():
                 f"{produto['title'][:70]}"
             )
 
-            enviado = enviar_telegram(
-                texto
-            )
+            enviado = enviar_telegram(texto)
 
             if enviado:
 
@@ -568,14 +522,14 @@ def main():
                 )
 
                 if enviados < MAX_OFERTAS_POR_EXECUCAO:
+
                     espera = random.randint(
                         ESPERA_MIN,
                         ESPERA_MAX
                     )
 
                     log(
-                        f"Aguardando "
-                        f"{espera}s..."
+                        f"Aguardando {espera}s..."
                     )
 
                     time.sleep(espera)
@@ -597,14 +551,11 @@ def main():
     log("=" * 60)
 
     if enviados == 0:
-        log(
-            "Nenhuma oferta publicada."
-        )
+        log("Nenhuma oferta publicada.")
         log(
             "Nenhum produto foi inventado "
             "como substituição."
         )
-
     else:
         log(
             f"FINALIZADO: "
@@ -620,4 +571,10 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
+'''
+
+caminho = "/mnt/data/hunter_whatsapp.py"
+with open(caminho, "w", encoding="utf-8") as f:
+    f.write(codigo)
+
+print(caminho)
