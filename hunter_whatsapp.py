@@ -1,30 +1,20 @@
-import os, requests, time, urllib.parse, json
+import os, requests, time
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL = os.getenv("TELEGRAM_CHANNEL")
-BASE_PROXY = "https://silent-math-e8e3.matheuscitrusba.workers.dev/?url="
 
-# Mudei para um termo que SEMPRE retorna: celular
-ml_url = "https://api.mercadolibre.com/sites/MLB/search?q=celular&limit=10"
-full_url = BASE_PROXY + urllib.parse.quote(ml_url, safe='')
+# Usa um proxy que o Mercado Livre não bloqueia
+url = "https://api.allorigins.win/raw?url=https://api.mercadolibre.com/sites/MLB/search?q=celular&limit=10"
 
-print(f"Tentando: {full_url}")
-r = requests.get(full_url, timeout=30)
+print(f"Tentando: {url}")
+r = requests.get(url, timeout=30)
 print(f"STATUS: {r.status_code}")
 
-try:
-    data = r.json()
-    print(f"KEYS: {data.keys()}")
-    items = data.get("results", [])
-    print(f"ACHADOS: {len(items)}")
-    if len(items) == 0:
-        print(f"RESPOSTA CRUA: {r.text[:500]}")
-except Exception as e:
-    print(f"ERRO JSON: {e}")
-    print(r.text[:500])
-    items = []
+data = r.json()
+items = data.get("results", [])
+print(f"ACHADOS: {len(items)}")
 
-for item in items:
+for item in items[:5]:
     title = item["title"]
     price = item["price"]
     link = item["permalink"]
