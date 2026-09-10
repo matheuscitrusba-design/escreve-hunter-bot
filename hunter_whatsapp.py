@@ -1,20 +1,27 @@
-import os, requests, random, urllib.parse
-TOKEN=os.getenv("TELEGRAM_BOT_TOKEN")
-CANAL=os.getenv("TELEGRAM_CHANNEL")
+import os, requests, time
 
-termo=random.choice(["echo dot 5","jbl go 4","fire tv stick","redmi note 13","air fryer"])
-url=f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(termo)}&limit=20&sort=sold_quantity_desc"
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHANNEL = os.getenv("TELEGRAM_CHANNEL")
 
-r=requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=15)
+headers = {"User-Agent": "Mozilla/5.0"}
+
+url = "https://api.mercadolibre.com/sites/MLB/search?q=oferta+do+dia&limit=20"
+r = requests.get(url, headers=headers, timeout=20)
 print(f"STATUS: {r.status_code}")
 
-if r.status_code==200:
-    for item in r.json().get("results",[])[:10]:
-        if "produto.mercadolivre.com.br/MLB-" in item.get("permalink",""):
-            base=item["permalink"].split("?")[0]
-            link=f"{base}?matt_tool=77761463&matt_word=matheus20190&forceInApp=true"
-            texto=f"🔥 OFERTA TESTADA (20 ITENS) 🔥\n\n📦 {item['title'][:90]}\n💰 R$ {item['price']}\n\n👇 ABRE DIRETO 👇\n{link}"
-            img=item.get("thumbnail","").replace("-I.jpg","-O.jpg")
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={"chat_id":CANAL,"photo":img,"caption":texto})
-            print("POSTOU!")
-            break
+items = r.json().get("results", [])
+print(f"ACHADOS: {len(items)} produtos")
+
+for item in items[:20]:
+    try:
+        title = item["title"]
+        price = item["price"]
+        link = item["permalink"]
+        thumb = item["thumbnail"]
+        texto = f"🔥 {title}\n💰 R$ {price}\n\n👉 {link}"
+        api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+        requests.post(api_url, data={"chat_id": CHANNEL, "photo": thumb, "caption": texto}, timeout=20)
+        print(f"ENVIADO: {title[:40]}")
+        time.sleep(2)
+    except Exception as e:
+        print(f"ERRO: {e}")
