@@ -1,6 +1,7 @@
 services:
-    - type: worker
+    - type: cron
     name: hunter-bot
     runtime: python
+    schedule: "0 11 * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python hunter_whatsapp.py
