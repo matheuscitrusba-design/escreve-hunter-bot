@@ -1,17 +1,12 @@
 import os, requests, time
-
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL = os.getenv("TELEGRAM_CHANNEL")
-
 headers = {"User-Agent": "Mozilla/5.0"}
-
 url = "https://api.mercadolibre.com/sites/MLB/search?q=oferta+do+dia&limit=20"
 r = requests.get(url, headers=headers, timeout=20)
 print(f"STATUS: {r.status_code}")
-
 items = r.json().get("results", [])
 print(f"ACHADOS: {len(items)} produtos")
-
 for item in items[:20]:
     try:
         title = item["title"]
