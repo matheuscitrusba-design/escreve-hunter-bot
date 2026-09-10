@@ -1,4 +1,4 @@
-codigo = r'''import os
+import os
 import re
 import time
 import random
@@ -571,10 +571,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-'''
-
-caminho = "/mnt/data/hunter_whatsapp.py"
-with open(caminho, "w", encoding="utf-8") as f:
-    f.write(codigo)
-
-print(caminho)
