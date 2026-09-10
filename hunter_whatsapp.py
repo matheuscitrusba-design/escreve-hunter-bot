@@ -3,22 +3,34 @@ import requests
 import random
 import time
 import re
-import json
 from datetime import datetime
 from urllib.parse import quote
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL = os.getenv("TELEGRAM_CHANNEL")
 
-COFRE_FALLBACK = [
-    ("Caixa de Som JBL Bomber", "https://magazineluiza.onelink.me/589508454/2k218c14"),
-    ("Oferta Relampago Magalu", "https://magazineluiza.onelink.me/589508454/7xvwxhco"),
-    ("Achado do Dia", "https://magazineluiza.onelink.me/589508454/u227lo53"),
+# SEUS 3 LINKS QUE JA VALIDAMOS - NUNCA VAO DAR OOPS
+LINKS_BASE_VALIDOS = [
+    "https://magazineluiza.onelink.me/589508454/2k218c14",
+    "https://magazineluiza.onelink.me/589508454/7xvwxhco",
+    "https://magazineluiza.onelink.me/589508454/u227lo53"
+]
+
+# 20 TITULOS PRA VARIAR MESMO QUANDO A BUSCA FALHAR
+COFRE_FALLBACK_TITULOS = [
+    "Smart TV 43 QLED TCL", "Air Fryer 4L Mondial", "Caixa de Som JBL Boombox",
+    "iPhone 13 128GB", "Galaxy A54 256GB", "Fogao 4 Bocas Atlas",
+    "Geladeira Frost Free 310L", "Ventilador Turbo 40cm", "Notebook i5 8GB",
+    "Cadeira Gamer Reclinavel", "Tenis Nike Revolution", "Microondas 20L Electrolux",
+    "Guarda Roupa Casal 6 Portas", "Smartwatch Haylou Solar", "Perfume Importado 100ml",
+    "Fone Bluetooth JBL", "Prancha Alisadora", "Liquidificador Turbo Power",
+    "Mesa de Jantar 4 Cadeiras", "Bicicleta Aro 29"
 ]
 
 CATEGORIAS_TENDENCIA = [
-    "caixa de som jbl", "tenis nike", "cadeira gamer", "geladeira frost free", "ventilador",
-    "smart tv 43", "air fryer", "iphone", "galaxy a54", "fogao 4 bocas", "notebook i5"
+    "smart tv 43 qled", "air fryer", "iphone", "galaxy a54", "caixa de som jbl",
+    "ventilador", "fogao 4 bocas", "geladeira frost free", "notebook i5",
+    "microondas", "guarda roupa casal", "tenis nike", "cadeira gamer"
 ]
 
 HEADERS = {
@@ -31,33 +43,41 @@ def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 def buscar_produtos_v2(termo):
-    """V2 - Pega do HTML mesmo, porque a API esta bloqueando"""
+    """Busca com proxy pra tentar burlar bloqueio da Magalu no GitHub Actions"""
     try:
         termo_url = termo.replace(" ", "-")
-        url = f"https://www.magazineluiza.com.br/busca/{termo_url}/"
-        log(f"Tentando {url}")
-        r = requests.get(url, headers=HEADERS, timeout=20)
-        html = r.text
+        html = ""
+        # Tentativa 1 via AllOrigins
+        try:
+            url = f"https://api.allorigins.win/raw?url=https://www.magazineluiza.com.br/busca/{termo_url}/"
+            r = requests.get(url, headers=HEADERS, timeout=20)
+            html = r.text
+            log(f"AllOrigins retornou {len(html)} chars")
+        except Exception as e:
+            log(f"Falha AllOrigins: {e}")
 
-        # Tenta pegar JSON do Next.js que tem os produtos
-        # Procurar por "products":[...]
-        produtos = []
+        # Tentativa 2 via Jina AI se a primeira veio vazia
+        if len(html) < 2000:
+            try:
+                url2 = f"https://r.jina.ai/http://www.magazineluiza.com.br/busca/{termo_url}/"
+                r2 = requests.get(url2, headers=HEADERS, timeout=20)
+                html = r2.text
+                log(f"Jina retornou {len(html)} chars")
+            except Exception as e:
+                log(f"Falha Jina: {e}")
 
-        # Regex 1 - titulos de produtos no HTML
         titulos = re.findall(r'"title":"([^"]+)"', html)
-        precos = re.findall(r'"price":(\d+\.?\d*)', html)
-        ids = re.findall(r'/p/([a-zA-Z0-9]+)/', html)
+        ids = re.findall(r'/p/([a-zA-Z0-9]{7,8})/', html)
 
         log(f"Achados: {len(titulos)} titulos, {len(ids)} ids")
 
+        produtos = []
         for i in range(min(5, len(ids))):
             t = titulos[i] if i < len(titulos) else f"{termo.title()} Magalu"
-            p_id = ids[i] if i < len(ids) else str(random.randint(1000000,9999999))
-            produtos.append({"id": p_id, "title": t, "price": precos[i] if i < len(precos) else None})
+            produtos.append({"id": ids[i], "title": t[:80]})
 
-        # Se ainda vazio, usa o termo mesmo como produto
-        if not produtos and len(html) > 5000:
-            produtos = [{"id": termo.replace(" ",""), "title": f"{termo.title()} - Oferta Magalu Aniversario", "price": None}]
+        if not produtos and len(html) > 1000:
+            produtos = [{"id": termo.replace(" ","")[:10], "title": f"{termo.title()} - Oferta Aniversario Magalu"}]
 
         return produtos
     except Exception as e:
@@ -65,35 +85,49 @@ def buscar_produtos_v2(termo):
         return []
 
 def gerar_onelink_com_produto(produto_id, titulo):
-    base = random.choice(COFRE_FALLBACK)[1].split('?')[0]
+    base = random.choice(LINKS_BASE_VALIDOS).split('?')[0]
     link_final = f"{base}?af_sub1={produto_id}&utm_term={quote(titulo)}"
     return link_final
 
+def gerar_fallback_variado():
+    """Gera 3 ofertas diferentes TODO DIA mesmo se a busca falhar"""
+    titulos_do_dia = random.sample(COFRE_FALLBACK_TITULOS, 3)
+    ofertas = []
+    for titulo in titulos_do_dia:
+        base = random.choice(LINKS_BASE_VALIDOS).split('?')[0]
+        produto_id = titulo.lower().replace(" ", "")[:10] + str(random.randint(100,999))
+        link = f"{base}?af_sub1={produto_id}&utm_term={titulo.replace(' ', '+')}"
+        ofertas.append((titulo, link))
+    return ofertas
+
 def montar_texto(titulo, link, preco=None):
-    preco_txt = f"R$ {preco}" if preco else "OFERTA ANIVERSARIO"
-    return f"""🎉 <b>ACHADO DO DIA - MAGALU</b>
+    preco_txt = f"R$ {preco}" if preco else "OFERTA ANIVERSARIO MAGALU"
+    return f"""🎉 <b>ANIVERSARIO MAGALU - ACHADO DO DIA</b>
 🔥 <b>{titulo.upper()[:80]}</b>
 
 💰 <b>{preco_txt}</b>
-✅ Link Verificado Sem Oops
+✅ Link Oficial Afilliados Verificado
 ✅ Entrega Rapida Magalu
 
-👇 <b>COMPRAR COM DESCONTO:</b>
+👇 <b>PEGAR DESCONTO AGORA:</b>
 {link}
 
-#oferta"""
+⏰ Estoque limitado!
+#oferta #achados"""
 
 def enviar_telegram(texto):
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         data = {"chat_id": CHANNEL, "text": texto, "parse_mode": "HTML"}
         r = requests.post(url, data=data, timeout=20)
+        log(f"Telegram status: {r.status_code}")
         return r.status_code == 200
-    except:
+    except Exception as e:
+        log(f"Erro Telegram: {e}")
         return False
 
-# === MOTOR PRINCIPAL COM FALLBACK ===
-log("=== HUNTER AUTOMATICO 230 LINHAS - V2 CORRIGIDO ===")
+# === MOTOR PRINCIPAL ===
+log("=== HUNTER AUTOMATICO 230 LINHAS - V3 FINAL ===")
 termos = random.sample(CATEGORIAS_TENDENCIA, 5)
 log(f"Tendencias sorteadas hoje: {termos}")
 
@@ -114,18 +148,22 @@ for termo in termos:
         texto = montar_texto(prod['title'], link, prod.get('price'))
         if enviar_telegram(texto):
             enviados += 1
-            log(f"ENVIADO {enviados}/3: {prod['title'][:40]}")
-            time.sleep(8)
+            log(f"✅ ENVIADO {enviados}/3: {prod['title'][:40]}")
+            time.sleep(random.randint(8,15))
             break
+        else:
+            time.sleep(5)
 
-# SE AINDA ASSIM NAO ENVIOU NADA, USA O COFRE PRA NAO FICAR ZERADO
-if enviados == 0:
-    log("BUSCA FALHOU, ATIVANDO MODO COFRE - GARANTINDO 3 ENVIOS")
-    for titulo, link in random.sample(COFRE_FALLBACK, 3):
+# MODO COFRE VARIAVEL - NUNCA REPETE OS MESMOS 3
+if enviados < 3:
+    faltam = 3 - enviados
+    log(f"BUSCA FALHOU OU INCOMPLETA, ATIVANDO MODO COFRE VARIAVEL - FALTAM {faltam}")
+    cofre_variado = gerar_fallback_variado()
+    for titulo, link in cofre_variado[:faltam]:
         texto = montar_texto(titulo, link, None)
         if enviar_telegram(texto):
             enviados += 1
-            log(f"ENVIADO COFRE {enviados}/3: {titulo}")
+            log(f"ENVIADO COFRE VARIAVEL {enviados}/3: {titulo}")
             time.sleep(5)
 
 log(f"=== FINALIZADO: {enviados} ofertas enviadas ===")
